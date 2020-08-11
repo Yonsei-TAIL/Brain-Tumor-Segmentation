@@ -103,5 +103,5 @@ The resize function should be replaced to keep the pixel value distribution. (Or
 - [x] Release test code.
 - [x] Data Augmentation.
 - [x] Inference code which generates mask nifti files.
-- [ ] Release pre-trained models.
+- [x] Release pre-trained models.
 - [ ] Additional evaluation metrics (Sensitivity, Specificity, Hausdorff95).

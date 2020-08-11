@@ -36,7 +36,7 @@ def parse_option(print_option=True):
     p.add_argument('--in_channels', default=4, type=int, help='number of input channels (input image types)')
     p.add_argument('--n_classes', default=4, type=int, help='number of output channels (output mask types)')
     p.add_argument('--base_n_filter', default=32, type=int)
-    p.add_argument('--discriminator', action='store_true')
+    p.add_argument('--discriminator', action='store_true', help='use discriminator which classifies real/fake image-mask pair.')
 
     # Optimizer
     p.add_argument('--optim', default='Adam', type=str, help='RMSprop | SGD | Adam')
