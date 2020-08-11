@@ -1,0 +1,201 @@
+import os
+import torch
+from glob import glob
+from tqdm import tqdm
+
+import torch
+from torch.autograd import Variable
+
+from utils import AverageMeter
+from utils.metrics import DiceCoef
+from utils.transforms import decode_preds
+
+def train(net, dataset_trn, optimizer, criterion, epoch, opt):
+    print("Start Training...")
+
+    if isinstance(net, list):
+        net, net_D = net
+        net.train()
+        net_D.train()
+
+        optimizer, optimizer_D = optimizer
+        criterion, criterion_D = criterion
+    
+    else:
+        net.train()
+
+    losses, ce_dices, necro_dices, peri_dices, total_dices = AverageMeter(), AverageMeter(), AverageMeter(), AverageMeter(), AverageMeter()
+
+    for it, (img, mask) in enumerate(dataset_trn):
+        # Optimizer
+        optimizer.zero_grad()
+
+        # Load Data
+        img, mask = torch.Tensor(img).float(), torch.Tensor(mask).float()
+        if opt.use_gpu:
+            img, mask = img.cuda(non_blocking=True), mask.cuda(non_blocking=True)
+
+        # Predict
+        pred = net(img)
+
+        # Loss Calculation
+        loss = criterion(pred, mask)
+
+        # Train Generator
+        if opt.discriminator:
+            valid = Variable(torch.FloatTensor(img.shape[0], 1).fill_(1.0), requires_grad=False)
+            if opt.use_gpu:
+                valid = valid.cuda(non_blocking=True)
+
+            loss_G = criterion_D(net_D(pred, mask), valid)
+            loss = loss + loss_G * 0.5
+
+        # Backward and step
+        loss.backward()
+        optimizer.step()
+
+        # Train Discriminator
+        if opt.discriminator:
+            optimizer_D.zero_grad()
+
+            fake = Variable(torch.FloatTensor(img.shape[0], 1).fill_(0.0), requires_grad=False)
+            if opt.use_gpu:
+                fake = fake.cuda(non_blocking=True)
+            
+            real_loss = criterion_D(net_D(img, mask), valid)
+            fake_loss = criterion_D(net_D(pred.detach(), mask), fake)
+            loss_D = 0.5 * (real_loss + fake_loss)
+
+            loss_D.backward()
+            optimizer_D.step()
+
+        # Calculation Dice Coef Score
+        pred_decoded = torch.stack(decode_preds(pred), 0)
+        ce_dice, necro_dice, peri_dice = DiceCoef(return_score_per_channel=True)(pred_decoded, mask[:,1:])
+        total_dice = (ce_dice + necro_dice + peri_dice) / 3
+
+        ce_dices.update(ce_dice.item(), img.size(0))
+        necro_dices.update(necro_dice.item(), img.size(0))
+        peri_dices.update(peri_dice.item(), img.size(0))
+        total_dices.update(total_dice.item(), img.size(0))
+
+        # Stack Results
+        losses.update(loss.item(), img.size(0))
+
+        if (it==0) or (it+1) % 10 == 0:
+            print('Epoch[%3d/%3d] | Iter[%3d/%3d] | Loss %.4f | Dice : CE %.4f Necro %.4f Peri %.4f Total %.4f'
+                % (epoch+1, opt.max_epoch, it+1, len(dataset_trn), losses.avg, ce_dices.avg, necro_dices.avg, peri_dices.avg, total_dices.avg))
+
+    print(">>> Epoch[%3d/%3d] | Training Loss : %.4f | Dice : CE %.4f Necro %.4f Peri %.4f Total %.4f\n"
+        % (epoch+1, opt.max_epoch, losses.avg, ce_dices.avg, necro_dices.avg, peri_dices.avg, total_dices.avg))
+
+
+def validate(dataset_val, net, criterion, optimizer, epoch, opt, best_dice, best_epoch):
+    print("Start Evaluation...")
+    if isinstance(net, list):
+        net, _ = net
+        net.eval()
+
+        optimizer, _ = optimizer
+        criterion, _ = criterion
+    else:
+        net.eval()
+
+    losses, ce_dices, necro_dices, peri_dices, total_dices = AverageMeter(), AverageMeter(), AverageMeter(), AverageMeter(), AverageMeter()
+
+    for it, (img, masks_resized, masks_org, meta) in enumerate(dataset_val):
+        # Load Data
+        img, masks_resized = [torch.Tensor(tensor).float() for tensor in [img, masks_resized]]
+        if opt.use_gpu:
+            img, masks_resized = [tensor.cuda(non_blocking=True) for tensor in [img, masks_resized]]
+
+        # Predict
+        with torch.no_grad():
+            pred = net(img)
+
+        # Loss Calculation
+        loss = criterion(pred, masks_resized)
+
+        # Evaluation Metric Calcuation
+        pred_decoded = decode_preds(pred, meta, refine=True)
+        for pred, gt in zip(pred_decoded, masks_org):
+            ce_dice, necro_dice, peri_dice = DiceCoef(return_score_per_channel=True)(pred[None, ...], gt[None, ...].to(pred.device))
+            total_dice = (ce_dice + necro_dice + peri_dice) / 3
+
+            ce_dices.update(ce_dice.item(), 1)
+            necro_dices.update(necro_dice.item(), 1)
+            peri_dices.update(peri_dice.item(), 1)
+            total_dices.update(total_dice.item(), 1)
+
+        # Stack Results
+        losses.update(loss.item(), img.size(0))
+        
+
+        print('Epoch[%3d/%3d] | Iter[%3d/%3d] | Loss %.4f | Dice : CE %.4f Necro %.4f Peri %.4f Total %.4f'
+            % (epoch+1, opt.max_epoch, it+1, len(dataset_val), losses.avg, ce_dices.avg, necro_dices.avg, peri_dices.avg, total_dices.avg))
+
+    print(">>> Epoch[%3d/%3d] | Test Loss : %.4f | Dice : CE %.4f Necro %.4f Peri %.4f Total %.4f"
+        % (epoch+1, opt.max_epoch, losses.avg, ce_dices.avg, necro_dices.avg, peri_dices.avg, total_dices.avg))
+
+    # Update Result
+    if total_dices.avg > best_dice:
+        print('Best Score Updated...')
+        best_dice = total_dices.avg
+        best_epoch = epoch
+
+        # Remove previous weights pth files
+        for path in glob('%s/*.pth' % opt.exp):
+            os.remove(path)
+
+        model_filename = '%s/epoch_%04d_dice%.4f_loss%.8f.pth' % (opt.exp, epoch+1, best_dice, losses.avg)
+
+        # Single GPU
+        if opt.ngpu == 1:
+            torch.save(net.state_dict(), model_filename)
+        # Multi GPU
+        else:
+            torch.save(net.module.state_dict(), model_filename)
+
+    print('>>> Current best: Dice: %.8f in %3d epoch\n' % (best_dice, best_epoch+1))
+    
+    return best_dice, best_epoch
+
+
+def evaluate(dataset_val, net, opt):
+    print("Start Evaluation...")
+    if isinstance(net, list):
+        net, _ = net
+        net.eval()
+
+        optimizer, _ = optimizer
+        criterion, _ = criterion
+    
+    else:
+        net.eval()
+
+    ce_dices, necro_dices, peri_dices, total_dices = AverageMeter(), AverageMeter(), AverageMeter(), AverageMeter()
+
+    for img, masks_resized, masks_org, meta in tqdm(dataset_val):
+        # Load Data
+        img, masks_resized = [torch.Tensor(tensor).float() for tensor in [img, masks_resized]]
+        if opt.use_gpu:
+            img, masks_resized = [tensor.cuda(non_blocking=True) for tensor in [img, masks_resized]]
+
+        # Predict
+        with torch.no_grad():
+            pred = net(img)
+
+
+        # Evaluation Metric Calcuation
+        pred_decoded = decode_preds(pred, meta, refine=True)
+        for pred, gt in zip(pred_decoded, masks_org):
+            ce_dice, necro_dice, peri_dice = DiceCoef(return_score_per_channel=True)(pred[None, ...], gt[None, ...].to(pred.device))
+            total_dice = (ce_dice + necro_dice + peri_dice) / 3
+
+            ce_dices.update(ce_dice.item(), 1)
+            necro_dices.update(necro_dice.item(), 1)
+            peri_dices.update(peri_dice.item(), 1)
+            total_dices.update(total_dice.item(), 1)
+
+    print("Evaluate Result | Dice : CE %.4f Necro %.4f Peri %.4f Total %.4f"
+        % (ce_dices.avg, necro_dices.avg, peri_dices.avg, total_dices.avg))
