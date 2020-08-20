@@ -22,7 +22,7 @@ def dice_coef(y_pred, y_true):
 
 
     # Calculate Dice Coefficient Score
-    smooth = 1.
+    smooth = 1e-5
     
     y_pred = y_pred.view(-1)
     y_true = y_true.view(-1)
@@ -32,14 +32,8 @@ def dice_coef(y_pred, y_true):
     return (2 * intersection + smooth) / (y_pred.sum() + y_true.sum() + smooth)
 
 def dice_coef_np(y_pred, y_true):
-    
-
-    # Convert to Binary
-    y_pred[y_pred > 0.5] = 1
-    y_pred[y_pred <= 0.5] = 0
-
     # Calculate Dice Coefficient Score
-    smooth = 1.
+    smooth = 1e-5
     
     y_pred = y_pred.reshape((-1))
     y_true = y_true.reshape((-1))
@@ -67,7 +61,7 @@ def compute_per_channel_dice(input, target, epsilon=1e-5, ignore_index=None, wei
 
 
 class DiceCoef(nn.Module):
-    """Computes Dice Loss, which just 1 - DiceCoefficient described above.
+    """Computes Dice Coefficient
     """
 
     def __init__(self, epsilon=1e-5, return_score_per_channel=False):
@@ -77,7 +71,7 @@ class DiceCoef(nn.Module):
 
     def forward(self, input, target):
         per_channel_dice = compute_per_channel_dice(input, target, epsilon=self.epsilon)
-        # Average the Dice score across all channels/classes
+
         if self.return_score_per_channel:
             return per_channel_dice
         else:
@@ -95,9 +89,3 @@ def flatten(tensor):
     transposed = tensor.permute(axis_order).contiguous()
     # Flatten: (C, N, D, H, W) -> (C, N * D * H * W)
     return transposed.view(C, -1)
-
-
-# from scipy.spatial.distance import directed_hausdorff
-# # Compute 95% tile Hausdorff Distance
-# hd = max(np.percentile(directed_hausdorff(targets[0,0,:,:].cpu().detach().numpy(), output1[0,1,:,:].cpu().detach().numpy())[0], 95),
-#         np.percentile(directed_hausdorff(output1[0,1,:,:].cpu().detach().numpy(), targets[0,0,:,:].cpu().detach().numpy())[0], 95))

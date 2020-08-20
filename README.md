@@ -8,7 +8,7 @@ Requirements:
 - Python 3 (code has been tested on Python 3.5.6)
 - PyTorch (code tested with 1.1.0)
 - CUDA and cuDNN (tested with Cuda 10.0)
-- Python pacakges : tqdm, opencv-python (4.1), SimpleITK (1.2.0), scipy (1.2.1), imgaug (0.4.0)
+- Python pacakges : tqdm, opencv-python (4.1), SimpleITK (1.2.0), scipy (1.2.1), imgaug (0.4.0), medpy (0.4.0)
 
 Structure:
 - ```data/```: save directory of datasets
@@ -85,11 +85,13 @@ data
 │    └─── ...
 ```
 
-#### Performance
-|   Model   | Dice_Necro | Dice_CE | Dice_Peri | Dice_Total |
-| :-------: | :--------: | :-----: | :-------: | :--------: |
-| M-Unet 2D |   0.9436   |  0.9367 |   0.8658  |   0.9154   |
-| M-Unet 3D |            |         |           |            |
+#### Performance (Modified UNet 2D)
+|    Metric    | Dice_Necro | Dice_CE | Dice_Peri |
+| :----------: | :--------: | :-----: | :-------: |
+|     DICE     |   0.7977   |  0.8968 |   0.8147  |
+| Hausdorff 95 |   5.4731   |  1.5011 |   5.0860  |
+|  Sensitivity |   0.8625   |  0.8754 |   0.9393  |
+|  Specificity |   0.9999   |  0.9998 |   0.9977  |
 
 #### Pre-trained Models
 - Modified UNet 2D : [Google Drive Link](https://drive.google.com/file/d/19xUNCYensxN_9sxOZ2XanzeD0feTRJ0p/view?usp=sharing)
@@ -104,4 +106,4 @@ The resize function should be replaced to keep the pixel value distribution. (Or
 - [x] Data Augmentation.
 - [x] Inference code which generates mask nifti files.
 - [x] Release pre-trained models.
-- [ ] Additional evaluation metrics (Sensitivity, Specificity, Hausdorff95).
+- [X] Additional evaluation metrics (Sensitivity, Specificity, Hausdorff95).

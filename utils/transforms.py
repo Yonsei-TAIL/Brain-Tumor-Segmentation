@@ -224,7 +224,7 @@ def decode_preds(pred, meta=None, refine=True):
     pred_decoded = []
     for b in range(batch_size):
         # Probability Mask to Binary Mask
-        pred_bi = (pred[b].sigmoid() > 0.1).cpu().data.numpy()
+        pred_bi = (pred[b].sigmoid() > 0.1).cpu().data.numpy().astype(np.uint8)
         
         # Remove multi-class predicted pixels
         pred_bg, pred_ce, pred_necro, pred_peri = pred_bi

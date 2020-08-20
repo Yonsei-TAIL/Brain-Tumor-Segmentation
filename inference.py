@@ -34,7 +34,7 @@ if __name__ == "__main__":
     net = create_model(opt)
 
     # Load Patient List
-    patList = glob(os.path.join(opt.data_root, 'test', '5519078'))
+    patList = glob(os.path.join(opt.data_root, 'valid', '*'))
 
     # Inference
     for patDir in tqdm(patList):
@@ -99,7 +99,6 @@ if __name__ == "__main__":
         pred_decoded = decode_preds(pred, meta, refine=True)[0]
 
         # Numpy Array to SimpleITK
-        sitk.WriteImage(sitk.GetImageFromArray(torch.argmax(pred[0], dim=0).data.numpy()), os.path.join(patDir, 'decode_mask.nii.gz'))
         ce_pred, necro_pred, peri_pred = pred_decoded.data.numpy()
         ce_pred, necro_pred, peri_pred = [sitk.GetImageFromArray(array) for array in [ce_pred, necro_pred, peri_pred]]
 
