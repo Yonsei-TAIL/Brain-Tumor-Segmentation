@@ -34,7 +34,7 @@ if __name__ == "__main__":
     net = create_model(opt)
 
     # Load Patient List
-    patList = glob(os.path.join(opt.data_root, 'valid', '*'))
+    patList = glob(os.path.join(opt.data_root, 'test', '*'))
 
     # Inference
     for patDir in tqdm(patList):
